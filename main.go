@@ -18,7 +18,7 @@ var (
 	name     = flag.String("name", "Unknown", "base class name")
 	topArray = flag.Bool("t", false, "top level array")
 	verbose  = flag.Bool("v", false, "verbose mode")
-	lib      = flag.String("l", "", "kind of library")
+	lib      = flag.String("l", "", "kind of library(autovalue or other)")
 )
 
 type printer interface {

@@ -18,7 +18,35 @@ var (
 	name     = flag.String("name", "Unknown", "base class name")
 	topArray = flag.Bool("t", false, "top level array")
 	verbose  = flag.Bool("v", false, "verbose mode")
+	lib      = flag.String("l", "", "kind of library")
 )
+
+type printer interface {
+	header(name string) string
+	item(t, v, name string) string
+}
+
+type standardPrinter struct {
+}
+
+func (a standardPrinter) header(name string) string {
+	return fmt.Sprintf("public class %s {", name)
+}
+
+func (a standardPrinter) item(t, v, name string) string {
+	return fmt.Sprintf(`    @SerializedName("%s") %s %s;`, t, v, name)
+}
+
+type autovalue struct {
+}
+
+func (a autovalue) header(name string) string {
+	return fmt.Sprintf("@AutoValue public abstract class %s {", name)
+}
+
+func (a autovalue) item(t, v, name string) string {
+	return fmt.Sprintf(`    @SerializedName("%s") abstract %s %s();`, t, v, name)
+}
 
 type data struct {
 	r    response
@@ -68,10 +96,15 @@ func main() {
 		cache = append(cache, d)
 	}
 
+	var p printer = standardPrinter{}
+	if *lib == "autovalue" {
+		p = autovalue{}
+	}
+
 	var j data
 	for len(cache) > 0 {
 		j, cache = cache[0], cache[1:]
-		parse(j, string(body))
+		parse(p, j, string(body))
 	}
 }
 
@@ -80,8 +113,8 @@ type ri struct {
 	key   string
 }
 
-func parse(j data, body string) {
-	fmt.Println(fmt.Sprintf("@AutoValue public abstract class %s {", j.name))
+func parse(p printer, j data, body string) {
+	fmt.Println(p.header(j.name))
 
 	values := make([]ri, 0, len(j.r))
 	for k := range j.r {
@@ -104,8 +137,7 @@ func parse(j data, body string) {
 	for _, r := range values {
 		v, k := j.r[r.key], r.key
 		name := normalize(k)
-		s := fmt.Sprintf(`    @SerializedName("%s") abstract %s `, k, getType(v, name))
-		s += name + "();"
+		s := p.item(k, getType(v, name), name)
 		if *verbose {
 			s += " // " + fmt.Sprintf("%v", v)
 		}

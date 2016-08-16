@@ -10,11 +10,19 @@ import (
 	"strings"
 )
 
+type response map[string]interface{}
+
 var (
-	index    = 0
-	name     = flag.String("name", "", "base class name")
+	name     = flag.String("name", "Unknown", "base class name")
 	topArray = flag.Bool("t", false, "top level array")
 )
+
+type data struct {
+	r    response
+	name string
+}
+
+var cache []data
 
 func main() {
 	if len(os.Args) < 2 {
@@ -24,6 +32,8 @@ func main() {
 
 	flag.Parse()
 
+	cache = make([]data, 0)
+
 	url := os.Args[len(os.Args)-1]
 	r, err := http.Get(url)
 	if err != nil {
@@ -32,60 +42,66 @@ func main() {
 
 	defer r.Body.Close()
 
-	var j map[string]interface{}
 	dec := json.NewDecoder(r.Body)
 	if *topArray {
 		var jj []map[string]interface{}
 		if err := dec.Decode(&jj); err != nil {
 			panic(err)
-			return
 		}
-		j = jj[0]
+		d := data{r: jj[0], name: *name}
+		cache = append(cache, d)
 	} else {
 		var jj map[string]interface{}
 		if err := dec.Decode(&jj); err != nil {
 			panic(err)
-			return
 		}
-		j = jj
+		d := data{r: jj, name: *name}
+		cache = append(cache, d)
 	}
-	parse(j)
+
+	var j data
+	for len(cache) > 0 {
+		j, cache = cache[0], cache[1:]
+		parse(j)
+	}
 }
 
-func parse(j map[string]interface{}) {
-	if index == 0 {
-		fmt.Println(fmt.Sprintf("@AutoValue public abstract class %s {", *name))
-	} else {
-		fmt.Println(fmt.Sprintf("@AutoValue public abstract class %s%d {", *name, index))
-	}
+func parse(j data) {
+	fmt.Println(fmt.Sprintf("@AutoValue public abstract class %s {", j.name))
 
-	for k, v := range j {
-		s := fmt.Sprintf(`    @SerializedName("%s") abstract %s `, k, getType(v))
-		s += normalize(k) + "();"
+	for k, v := range j.r {
+		name := normalize(k)
+		s := fmt.Sprintf(`    @SerializedName("%s") abstract %s `, k, getType(v, name))
+		s += name + "();"
 		fmt.Println(s)
 	}
 	fmt.Println("}")
-	index++
 }
 
-func getType(t interface{}) string {
+func getType(t interface{}, name string) string {
 	switch v := t.(type) {
 	case float64:
 		s := strconv.FormatFloat(v, 'f', -1, 64)
 		if strings.Contains(s, ".") {
 			return "double"
-		} else {
-			return "int"
 		}
+		return "int"
 	case bool:
 		return "boolean"
 	case string:
+		// TODO: more smart logic
+		if strings.Contains(v, "-") &&
+			strings.Contains(v, ":") &&
+			strings.Contains(v, "T") {
+			return "Date"
+		}
 		return "String"
-	case []byte:
-		return "String"
+	case map[string]interface{}:
+		n := strings.Title(name)
+		cache = append(cache, data{r: v, name: n})
+		return n
 	default:
-		// TODO; check array
-		return "unknown"
+		return "Object"
 	}
 }
 

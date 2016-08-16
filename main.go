@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -42,7 +44,13 @@ func main() {
 
 	defer r.Body.Close()
 
-	dec := json.NewDecoder(r.Body)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		panic(err)
+	}
+
+	br := bytes.NewReader(body)
+	dec := json.NewDecoder(br)
 	if *topArray {
 		var jj []map[string]interface{}
 		if err := dec.Decode(&jj); err != nil {
@@ -62,14 +70,38 @@ func main() {
 	var j data
 	for len(cache) > 0 {
 		j, cache = cache[0], cache[1:]
-		parse(j)
+		parse(j, string(body))
 	}
 }
 
-func parse(j data) {
+type ri struct {
+	index int
+	key   string
+}
+
+func parse(j data, body string) {
 	fmt.Println(fmt.Sprintf("@AutoValue public abstract class %s {", j.name))
 
-	for k, v := range j.r {
+	values := make([]ri, 0, len(j.r))
+	for k := range j.r {
+		index := strings.Index(body, "\""+k+"\"")
+		r := ri{index: index, key: k}
+
+		var f bool
+		for i, v := range values {
+			if v.index > r.index {
+				values = append(values[0:i], append([]ri{r}, values[i:]...)...)
+				f = true
+				break
+			}
+		}
+		if !f {
+			values = append(values, r)
+		}
+	}
+
+	for _, r := range values {
+		v, k := j.r[r.key], r.key
 		name := normalize(k)
 		s := fmt.Sprintf(`    @SerializedName("%s") abstract %s `, k, getType(v, name))
 		s += name + "();"

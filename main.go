@@ -168,6 +168,12 @@ func getType(t interface{}, name string) string {
 		n := strings.Title(name)
 		cache = append(cache, data{r: v, name: n})
 		return n
+	case []interface{}:
+		if len(v) == 0 {
+			// unknown type
+			return "List<Object>"
+		}
+		return "List<" + getType(v[0], name) + ">"
 	default:
 		return "Object"
 	}

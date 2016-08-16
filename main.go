@@ -17,6 +17,7 @@ type response map[string]interface{}
 var (
 	name     = flag.String("name", "Unknown", "base class name")
 	topArray = flag.Bool("t", false, "top level array")
+	verbose  = flag.Bool("v", false, "verbose mode")
 )
 
 type data struct {
@@ -105,6 +106,9 @@ func parse(j data, body string) {
 		name := normalize(k)
 		s := fmt.Sprintf(`    @SerializedName("%s") abstract %s `, k, getType(v, name))
 		s += name + "();"
+		if *verbose {
+			s += " // " + fmt.Sprintf("%v", v)
+		}
 		fmt.Println(s)
 	}
 	fmt.Println("}")

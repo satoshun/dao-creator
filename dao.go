@@ -1,27 +1,52 @@
-package main
+package dao
 
 import (
-	"bytes"
-	"encoding/json"
-	"flag"
 	"fmt"
-	"io/ioutil"
-	"net/http"
-	"os"
 	"strconv"
 	"strings"
 )
 
 type response map[string]interface{}
 
-var (
-	name     = flag.String("name", "Unknown", "base class name")
-	topArray = flag.Bool("t", false, "top level array")
-	verbose  = flag.Bool("v", false, "verbose mode")
-	lib      = flag.String("l", "", "kind of library(autovalue or other)")
-)
+// Data is basic data
+type Data struct {
+	Res  response
+	Name string
+}
 
-type printer interface {
+var cache []*Data
+
+func AddData(d *Data) {
+	cache = append(cache, d)
+}
+
+func PopData() *Data {
+	if len(cache) == 0 {
+		return nil
+	}
+	var j *Data
+	j, cache = cache[0], cache[1:]
+	return j
+}
+
+func GetPrinter(t string) Printer {
+	if t == "autovalue" {
+		return autovalue{}
+	}
+	return standardPrinter{}
+}
+
+// GetDefaultPrinter returns default printer
+func GetDefaultPrinter() Printer {
+	return standardPrinter{}
+}
+
+func init() {
+	cache = make([]*Data, 0, 1)
+}
+
+// Printer is printer
+type Printer interface {
 	header(name string) string
 	item(t, v, name string) string
 }
@@ -48,76 +73,16 @@ func (a autovalue) item(t, v, name string) string {
 	return fmt.Sprintf(`    @SerializedName("%s") abstract %s %s();`, t, v, name)
 }
 
-type data struct {
-	r    response
-	name string
-}
-
-var cache []data
-
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("usage: dao-creator https://hoge.com")
-		return
-	}
-
-	flag.Parse()
-
-	cache = make([]data, 0)
-
-	url := os.Args[len(os.Args)-1]
-	r, err := http.Get(url)
-	if err != nil {
-		panic(err)
-	}
-
-	defer r.Body.Close()
-
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	br := bytes.NewReader(body)
-	dec := json.NewDecoder(br)
-	if *topArray {
-		var jj []map[string]interface{}
-		if err := dec.Decode(&jj); err != nil {
-			panic(err)
-		}
-		d := data{r: jj[0], name: *name}
-		cache = append(cache, d)
-	} else {
-		var jj map[string]interface{}
-		if err := dec.Decode(&jj); err != nil {
-			panic(err)
-		}
-		d := data{r: jj, name: *name}
-		cache = append(cache, d)
-	}
-
-	var p printer = standardPrinter{}
-	if *lib == "autovalue" {
-		p = autovalue{}
-	}
-
-	var j data
-	for len(cache) > 0 {
-		j, cache = cache[0], cache[1:]
-		parse(p, j, string(body))
-	}
-}
-
 type ri struct {
 	index int
 	key   string
 }
 
-func parse(p printer, j data, body string) {
-	fmt.Println(p.header(j.name))
+func Parse(p Printer, j *Data, body string, verbose bool) {
+	fmt.Println(p.header(j.Name))
 
-	values := make([]ri, 0, len(j.r))
-	for k := range j.r {
+	values := make([]ri, 0, len(j.Res))
+	for k := range j.Res {
 		index := strings.Index(body, "\""+k+"\"")
 		r := ri{index: index, key: k}
 
@@ -135,10 +100,10 @@ func parse(p printer, j data, body string) {
 	}
 
 	for _, r := range values {
-		v, k := j.r[r.key], r.key
+		v, k := j.Res[r.key], r.key
 		name := normalize(k)
 		s := p.item(k, getType(v, name), name)
-		if *verbose {
+		if verbose {
 			s += " // " + fmt.Sprintf("%v", v)
 		}
 		fmt.Println(s)
@@ -166,7 +131,7 @@ func getType(t interface{}, name string) string {
 		return "String"
 	case map[string]interface{}:
 		n := strings.Title(name)
-		cache = append(cache, data{r: v, name: n})
+		cache = append(cache, &Data{Res: v, Name: n})
 		return n
 	case []interface{}:
 		if len(v) == 0 {

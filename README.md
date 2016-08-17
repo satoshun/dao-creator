@@ -89,7 +89,7 @@ or Use AutoValue.
 Use Go compiler.
 
 ```
-go install github.com/satoshun/dao-creator
+go install github.com/satoshun/dao-creator/cmd
 ```
 
 

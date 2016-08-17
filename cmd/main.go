@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"os"
 
-	dao "github.com/satoshun/dao-creator"
+	"github.com/satoshun/dao-creator/dao"
 )
 
 var (
